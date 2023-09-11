@@ -1,0 +1,255 @@
+---
+title: "Jambase API"
+author: "Mike Kaminski"
+date: "2023-09-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(httr)
+# url for the events page
+url <- "https://www.jambase.com/jb-api/v1/events"
+
+# date to get the next few months
+future_date <- Sys.Date() %m+% months(3)
+
+# gets the number of shows for the future date
+countString <- list(apikey = "e9bc7d9d-0946-43ec-a95e-b8f19cbbb6b1",
+                    geoCityId ="jambase:4230765",
+                    eventDateTo = future_date) # this is the Chicago geoCityId
+
+countResponse <- VERB("GET",
+                      url,
+                      query = countString,
+                      content_type("application/octet-stream"),
+                      accept("application/json"))
+
+countContent <- content(countResponse,"parsed")
+
+numShows <- countContent$pagination$totalItems
+
+# numPages <- countContent$pagination$totalPages
+
+# queryString <- list(apikey = "e9bc7d9d-0946-43ec-a95e-b8f19cbbb6b1",
+#                     geoCityId ="jambase:4230765",
+#                     perPage = 100,
+#                     eventDateTo = future_date)
+# 
+# response <- VERB("GET", url, query = queryString, content_type("application/octet-stream"), accept("application/json"))
+# all <- content(response, "parsed")
+```
+
+# Gets all the upcoming shows.
+```{r}
+# Initialize an empty list to store the results
+all_results <- list()
+
+# Define the common parameters
+common_params <- list(
+  apikey = "e9bc7d9d-0946-43ec-a95e-b8f19cbbb6b1",
+  geoCityId = "jambase:4230765",
+  perPage = 100,
+  eventDateTo = future_date
+)
+
+# Specify the number of pages you want to fetch
+num_pages <- ceiling(numShows/100)
+
+# Loop through the pages
+for (page in 1:num_pages) {
+  # Create a copy of the common parameters and set the 'page' parameter
+  query_params <- c(common_params, page = page)
+  
+  # Send the HTTP request
+  response <- VERB("GET", url, query = query_params, content_type("application/octet-stream"), accept("application/json"))
+  
+  # Parse and store the response in the list
+  all_results[[page]] <- content(response, "parsed")
+}
+
+```
+
+# Gets all the venues
+If there's more than 1 performer at the event, then the venue is repeated.
+```{r}
+# Original Code
+# venues <- lapply(all_results, function(x) {
+#   lapply(x$events, function(event) {
+#     event$location$name
+#   })
+# })
+
+venues <-
+  lapply(all_results, function(x) {
+    lapply(x$events, function(event) {
+      if (length(event$performer) > 1) {
+        names <- rep(event$location$name, length(event$performer))
+      } else if (length(event$performer) == 1) {
+        names <- event$location$name
+      } else {
+        names <- NA  # or any other value you want to use for missing names
+      }
+      names
+    })
+  })
+
+venues_col <- unlist(venues) %>% as.data.frame()
+colnames(venues_col) <- "venue"
+```
+
+# Gets the date of the show
+If there's more than 1 performer at the event, then the date is repeated.
+```{r}
+# Original Code
+# shows <- lapply(all_results, function(x) {
+#   lapply(x$events, function(event) {
+#     event$startDate
+#   })
+# })
+
+shows <-
+  lapply(all_results, function(x) {
+    lapply(x$events, function(event) {
+      if (length(event$performer) > 1) {
+        names <- rep(event$startDate, length(event$performer))
+      } else if (length(event$performer) == 1) {
+        names <- event$startDate
+      } else {
+        names <- NA  # or any other value you want to use for missing names
+      }
+      names
+    })
+  })
+
+shows_col <- unlist(shows) %>% as.data.frame()
+colnames(shows_col) <- "show_date"
+```
+
+
+# Gets the artist name
+```{r}
+artists <-
+  value <- lapply(all_results, function(x) {
+  lapply(x$events, function(event) {
+    if (length(event$performer) > 1) {
+      names <- lapply(event$performer, function(performer) performer$name)
+    } else if (length(event$performer) == 1) {
+      names <- event$performer[[1]]$name
+    }
+    names
+  })
+})
+
+artists_col <- unlist(artists) %>% as.data.frame()
+colnames(artists_col) <- "artists"
+  
+```
+
+# gets the performance date for each band
+```{r}
+perf_date <-
+  venues <- lapply(all_results, function(x) {
+  lapply(x$events, function(event) {
+    if (length(event$performer) > 1) {
+      names <- lapply(event$performer, function(performer) performer$`x-performanceDate`)
+    } else if (length(event$performer) == 1) {
+      names <- event$performer[[1]]$`x-performanceDate`
+    }
+    names
+  })
+})
+
+perf_col <- unlist(perf_date) %>% as.data.frame()
+colnames(perf_col) <- "perfdate"
+```
+
+
+
+# Merges dataframes
+```{r}
+upcoming_shows <- cbind(venues_col,shows_col,artists_col) %>%
+  mutate(show_date = as.Date(show_date,format = "%Y-%m-%d"))
+
+str(upcoming_shows)
+
+upcoming_shows %>% group_by(venue) %>% summarise(count = n()) %>% arrange(desc(count))
+upcoming_shows %>% summarise(count = n()) %>% arrange(desc(count))
+```
+
+# Gets the artist name
+```{r}
+
+length(all_results[[1]]$events[[27]]$performer)
+
+all_results[[1]]$events[[27]]$performer[[2]]$`x-performanceDate`
+  
+  
+artists_test <-
+  venues <- lapply(all_results, function(x) {
+  lapply(x$events, function(event) {
+    if (length(event$performer) > 1) {
+      names <- lapply(event$performer, function(performer) performer$`x-performanceDate`)
+    } else if (length(event$performer) == 1) {
+      names <- event$performer[[1]]$`x-performanceDate`
+    }
+    names
+  })
+})
+
+a <- unlist(artists_test) %>% as.data.frame()
+colnames(artists_col) <- "perfdate"
+  
+```
+
+```{r}
+
+
+shows <-   
+  value <- lapply(all_results, function(x) {
+  lapply(x$events, function(event) {
+    if (length(event$performer) > 1) {
+      names <- lapply(event$startDate, function(startDate) event$startDate)
+    } else if (length(event$performer) == 1) {
+     names <- event$startDate
+    }
+    names
+  })
+})
+shows_col <- unlist(shows) %>% as.data.frame()
+colnames(shows_col) <- "show_date"
+```
+
+```{r}
+# Extract $location$name for all elements
+a <- lapply(all_results, function(x) {
+  lapply(x$events, function(event) {
+    event$location$name
+  })
+})
+venues_col <- unlist(venues) %>% as.data.frame()
+colnames(venues_col) <- "venue"
+```
+
+```{r}
+a <- 
+  lapply(all_results, function(x) {
+    lapply(x$events, function(event) {
+      if (length(event$performer) > 1) {
+        names <- rep(event$location$name, length(event$performer))
+      } else if (length(event$performer) == 1) {
+        names <- event$location$name
+      } else {
+        names <- NA  # or any other value you want to use for missing names
+      }
+      names
+    })
+  })
+
+a_col <- unlist(a) %>% as.data.frame()
+colnames(a_col) <- "venue"
+```
+
