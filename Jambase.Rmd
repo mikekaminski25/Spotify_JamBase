@@ -6,11 +6,13 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
 ```
 
 ```{r}
 library(httr)
+library(lubridate)
+library(dplyr)
 # url for the events page
 url <- "https://www.jambase.com/jb-api/v1/events"
 
@@ -45,21 +47,22 @@ numShows <- countContent$pagination$totalItems
 
 # Gets all the upcoming shows.
 ```{r}
-# Initialize an empty list to store the results
+# create an empty list to store the results
 all_results <- list()
 
-# Define the common parameters
+# Define  common parameters
 common_params <- list(
   apikey = "e9bc7d9d-0946-43ec-a95e-b8f19cbbb6b1",
   geoCityId = "jambase:4230765",
   perPage = 100,
-  eventDateTo = future_date
+  eventDateTo = future_date,
+  expandExternalIdentifiers = "true"
 )
 
-# Specify the number of pages you want to fetch
+# Specify the number of pages to fetch
 num_pages <- ceiling(numShows/100)
 
-# Loop through the pages
+# Loop through each page
 for (page in 1:num_pages) {
   # Create a copy of the common parameters and set the 'page' parameter
   query_params <- c(common_params, page = page)
@@ -71,6 +74,10 @@ for (page in 1:num_pages) {
   all_results[[page]] <- content(response, "parsed")
 }
 
+
+all_results[[1]]$events[[1]]$performer[[1]]$`x-externalIdentifiers`[[5]]$identifier[[1]]
+
+str(all_results[[1]]$events[[1]]$performer[[1]])
 ```
 
 # Gets all the venues
@@ -130,23 +137,23 @@ colnames(shows_col) <- "show_date"
 ```
 
 
-# Gets the artist name
+# old code to get artist name
 ```{r}
-artists <-
-  value <- lapply(all_results, function(x) {
-  lapply(x$events, function(event) {
-    if (length(event$performer) > 1) {
-      names <- lapply(event$performer, function(performer) performer$name)
-    } else if (length(event$performer) == 1) {
-      names <- event$performer[[1]]$name
-    }
-    names
-  })
-})
-
-artists_col <- unlist(artists) %>% as.data.frame()
-colnames(artists_col) <- "artists"
-  
+# artists <-
+#   value <- lapply(all_results, function(x) {
+#   lapply(x$events, function(event) {
+#     if (length(event$performer) > 1) {
+#       names <- lapply(event$performer, function(performer) performer$name)
+#     } else if (length(event$performer) == 1) {
+#       names <- event$performer[[1]]$name
+#     }
+#     names
+#   })
+# })
+# 
+# artists_col <- unlist(artists) %>% as.data.frame()
+# colnames(artists_col) <- "artists"
+#   
 ```
 
 # gets the performance date for each band
@@ -167,27 +174,451 @@ perf_col <- unlist(perf_date) %>% as.data.frame()
 colnames(perf_col) <- "perfdate"
 ```
 
+# New code to get artist name as well as spotify_id
+```{r}
+# Initialize an empty list to store performer names and Spotify identifiers
+performer_data <- list()
+
+# Iterate through each result in all_results
+for (result in all_results) {
+  # Iterate through each event in the result
+  for (event in result$events) {
+    # Check if the event has performers
+    if (length(event$performer) > 0) {
+      # Iterate through each performer in the event
+      for (performer in event$performer) {
+        # Check if performer has external identifiers
+        if (!is.null(performer$`x-externalIdentifiers`)) {
+          # Find the entry with source "spotify"
+          spotify_entry <- lapply(performer$`x-externalIdentifiers`, function(entry) {
+            if (entry$source == "spotify") {
+              return(entry$identifier[[1]])
+            }
+          })
+          # Remove NULL values (entries other than "spotify")
+          spotify_entry <- Filter(function(x) !is.null(x), spotify_entry)
+          
+          # Get the performer name
+          performer_name <- performer$name
+          
+          # Create a list containing both performer name and Spotify identifiers
+          performer_data_entry <- list(name = performer_name, spotify = spotify_entry)
+          
+          # Add the data for this performer to the list
+          performer_data <- append(performer_data, list(performer_data_entry))
+        }
+      }
+    }
+  }
+}
+
+# performer_data[[1]]$name
+# performer_data[[1]]$spotify
+# str(performer_data[[1]])
+
+performer_df <- data.frame(
+  Name = sapply(performer_data, function(entry) entry$name),
+  Spotify = sapply(performer_data, function(entry) {
+    if (length(entry$spotify) > 0) {
+      return(entry$spotify[[1]])
+    } else {
+      return(NA)
+    }
+  })
+)
+
+```
 
 
 # Merges dataframes
 ```{r}
-upcoming_shows <- cbind(venues_col,shows_col,artists_col) %>%
-  mutate(show_date = as.Date(show_date,format = "%Y-%m-%d"))
-
-str(upcoming_shows)
+upcoming_shows <- cbind(venues_col,shows_col,performer_df) %>%
+  mutate(show_date = as.Date(show_date,format = "%Y-%m-%d")) %>%
+  filter(!grepl("Sofar",venue, ignore.case = TRUE)) %>%
+  filter(!(venue %in% c("Douglas Park",
+                     "Hyde Park Jazz",
+                     "Fairmont Chicago Millennium Park",
+                     "Epiphany Center for the Arts",
+                     "On Tour Brewing")))
 
 upcoming_shows %>% group_by(venue) %>% summarise(count = n()) %>% arrange(desc(count))
 upcoming_shows %>% summarise(count = n()) %>% arrange(desc(count))
+upcoming_shows %>% filter(venue %in% 'United Center')
 ```
 
-# Gets the artist name
+# Removes duplicate Spotify Ids
+```{r}
+upcoming_shows1 <- upcoming_shows %>% distinct(Name, Spotify)
+```
+
+
+# END
+
+# old Gets Spotify Ids using artists
 ```{r}
 
-length(all_results[[1]]$events[[27]]$performer)
+# Goes to the artists URL
+url <- "https://www.jambase.com/jb-api/v1/artists"
 
-all_results[[1]]$events[[27]]$performer[[2]]$`x-performanceDate`
+# defines variable to loop through
+# all_artists <- upcoming_shows %>% distinct(artists)
+all_artists <- upcoming_shows$artists
+
+# Initialize an empty list to store each artist
+artistStringsList <- list()
+
+# Loop through each artist in the "artists" column
+for (artist in all_artists) {  
+  # Create a countString for the current artist
+  artistString <- list(
+    apikey = "e9bc7d9d-0946-43ec-a95e-b8f19cbbb6b1",
+    artistName = artist,
+    expandExternalIdentifiers = TRUE
+  )
   
+  artistResponse <- VERB("GET",
+                      url,
+                      query = artistString,
+                      content_type("application/octet-stream"),
+                      accept("application/json"))
   
+  artistContent <- content(artistResponse,"parsed")
+  
+  # Append the artistString to the list
+  artistStringsList <- append(artistStringsList, list(artistContent))
+}
+
+
+
+```
+
+# old Spotify URLs
+```{r}
+# Initialize an empty list to store the Spotify URLs
+spotify_urls <- list()
+
+# Iterate through each countString in countStringsList
+for (artistString in artistStringsList) {
+  # Extract the "artists" list
+  artists_list <- artistString$artists
+  
+  # Initialize a variable to store the Spotify URL for the current artist
+  spotify_url <- NULL
+  
+  # Iterate through each artist in the "artists" list
+  for (artist in artists_list) {
+    # Extract the "sameAs" list for the current artist
+    sameAs_list <- artist$sameAs
+    
+    # Find the item with identifier "spotify" in the "sameAs" list
+    spotify_item <- NULL
+    for (item in sameAs_list) {
+      if (item$identifier == "spotify") {
+        spotify_item <- item
+        break  # Exit the loop once found
+      }
+    }
+    
+    # If a Spotify URL is found, extract it
+    if (!is.null(spotify_item)) {
+      spotify_url <- spotify_item$url
+      break  # Exit the loop once a Spotify URL is extracted
+    }
+  }
+  
+  # Add the Spotify URL to the list
+  spotify_urls <- append(spotify_urls, list(spotify_url))
+}
+
+# Now spotify_urls contains the list of Spotify URLs for each artist in countStringsList
+
+# Define a function to extract the identifier from a Spotify URL
+extract_spotify_identifier <- function(spotify_url) {
+  if (!is.null(spotify_url)) {
+    return(sub(".*/artist/([^/]+)$", "\\1", spotify_url))
+  } else {
+    return(NULL)
+  }
+}
+
+# Use lapply to apply the function to each element in spotify_urls
+spotify_identifiers <- lapply(spotify_identifiers, function(x) ifelse(is.null(x), NA, x))
+spotify_df <- data.frame(SpotifyID = unlist(spotify_identifiers))
+
+str(spotify_identifiers)
+```
+
+# New  psotify URls
+```{r}
+# Initialize an empty list to store the Spotify URLs
+spotify_urls <- list()
+
+# Initialize an empty list to store the artist names
+artist_names <- list()
+
+# Iterate through each artistString in artistStringsList
+for (artistString in artistStringsList) {
+  # Extract the "artists" list
+  artists_list <- artistString$artists
+  
+  # Initialize a variable to store the Spotify URL for the current artist
+  spotify_url <- NULL
+  
+  # Initialize a variable to store the artist name for the current artist
+  artist_name <- NULL
+  
+  # Iterate through each artist in the "artists" list
+  for (artist in artists_list) {
+    # Extract the "sameAs" list for the current artist
+    sameAs_list <- artist$sameAs
+    
+    # Find the item with identifier "spotify" in the "sameAs" list
+    spotify_item <- NULL
+    for (item in sameAs_list) {
+      if (item$identifier == "spotify") {
+        spotify_item <- item
+        break  # Exit the loop once found
+      }
+    }
+    
+    # Extract the artist name
+    artist_name <- artist$name  
+    
+    # If a Spotify URL is found, extract it
+    if (!is.null(spotify_item)) {
+      spotify_url <- spotify_item$url
+      break  # Exit the loop once a Spotify URL is extracted
+    }
+  }
+  
+  # Add the Spotify URL to the list
+  spotify_urls <- append(spotify_urls, list(spotify_url))
+  
+  # Add the artist name to the list
+  artist_names <- append(artist_names, list(artist_name))
+}
+
+# Define a function to extract the identifier from a Spotify URL
+extract_spotify_identifier <- function(spotify_url) {
+  if (!is.null(spotify_url)) {
+    return(sub(".*/artist/([^/]+)$", "\\1", spotify_url))
+  } else {
+    return(NULL)
+  }
+}
+
+# Use lapply to apply the function to each element in spotify_urls
+spotify_identifiers <- lapply(spotify_urls, function(url) {
+  if (!is.null(url)) {
+    extract_spotify_identifier(url)
+  } else {
+    NA
+  }
+})
+
+
+spotify_df <- data.frame(SpotifyID = unlist(spotify_identifiers))
+artists_df <- data.frame(artist = unlist(artist_names))
+final_df <- cbind(artists_df,spotify_df) %>% 
+  distinct(artist, SpotifyID)
+
+```
+
+
+
+# External IDS?
+```{r}
+# url for the events page
+url <- "https://www.jambase.com/jb-api/v1/artists"
+
+# date to get the next few months
+future_date <- Sys.Date() %m+% months(1)
+
+# gets the number of shows for the future date
+countString <- list(apikey = "e9bc7d9d-0946-43ec-a95e-b8f19cbbb6b1",
+                    geoCityId ="jambase:4230765",
+                    artistName = '%Bayside%',
+                    expandExternalIdentifiers = TRUE) # this is the Chicago geoCityId
+                    # eventDateTo = future_date) 
+
+countResponse <- VERB("GET",
+                      url,
+                      query = countString,
+                      content_type("application/octet-stream"),
+                      accept("application/json"))
+
+countContent <- content(countResponse,"parsed")
+
+
+```
+
+```{r}
+url <- "https://www.jambase.com/jb-api/v1/artists"
+tes <- head(upcoming_shows$artists,5)
+artist_names <- paste(tes, collapse = "|")
+artist_names <- paste(artist_names, collapse = "")
+
+# gets the number of shows for the future date
+countString <- list(apikey = "e9bc7d9d-0946-43ec-a95e-b8f19cbbb6b1",
+                    artistName = tes,
+                    expandExternalIdentifiers = TRUE) # this is the Chicago geoCityId
+                    # eventDateTo = future_date) 
+
+countResponse <- VERB("GET",
+                      url,
+                      query = countStringsList,
+                      content_type("application/octet-stream"),
+                      accept("application/json"))
+
+countContent <- content(countResponse,"parsed")
+
+```
+```{r}
+# Initialize an empty list to store the countStrings for each artist
+countStringsList <- list()
+
+# Loop through each artist in the "artists" column
+# for (artist in upcoming_shows$artists) {
+for (artist in tes) {  
+  # Create a countString for the current artist
+  countString <- list(
+    apikey = "e9bc7d9d-0946-43ec-a95e-b8f19cbbb6b1",
+    artistName = artist,
+    expandExternalIdentifiers = TRUE
+  )
+  
+  countResponse <- VERB("GET",
+                      url,
+                      query = countString,
+                      content_type("application/octet-stream"),
+                      accept("application/json"))
+  
+  countContent <- content(countResponse,"parsed")
+  
+  # Append the countString to the list
+  countStringsList <- append(countStringsList, list(countContent))
+}
+
+####################
+
+# Initialize an empty list to store the Spotify URLs
+spotify_urls <- list()
+
+# Iterate through each countString in countStringsList
+for (countString in countStringsList) {
+  # Extract the "artists" list
+  artists_list <- countString$artists
+  
+  # Initialize a variable to store the Spotify URL for the current artist
+  spotify_url <- NULL
+  
+  # Iterate through each artist in the "artists" list
+  for (artist in artists_list) {
+    # Extract the "sameAs" list for the current artist
+    sameAs_list <- artist$sameAs
+    
+    # Find the item with identifier "spotify" in the "sameAs" list
+    spotify_item <- NULL
+    for (item in sameAs_list) {
+      if (item$identifier == "spotify") {
+        spotify_item <- item
+        break  # Exit the loop once found
+      }
+    }
+    
+    # If a Spotify URL is found, extract it
+    if (!is.null(spotify_item)) {
+      spotify_url <- spotify_item$url
+      break  # Exit the loop once a Spotify URL is extracted
+    }
+  }
+  
+  # Add the Spotify URL to the list
+  spotify_urls <- append(spotify_urls, list(spotify_url))
+}
+
+# Now spotify_urls contains the list of Spotify URLs for each artist in countStringsList
+
+# Define a function to extract the identifier from a Spotify URL
+extract_spotify_identifier <- function(spotify_url) {
+  if (!is.null(spotify_url)) {
+    return(sub(".*/artist/([^/]+)$", "\\1", spotify_url))
+  } else {
+    return(NULL)
+  }
+}
+
+# Use lapply to apply the function to each element in spotify_urls
+spotify_identifiers <- lapply(spotify_urls, extract_spotify_identifier)
+
+# Now spotify_identifiers contains the extracted identifiers with the same structure
+
+
+
+str(spotify_urls)
+# Now countStringsList contains a list of countStrings for each artist
+countStringsList[[1]]$artists[[1]]$sameAs[[2]]$url
+str(countStringsList[[1]])
+```
+
+
+
+# Spotify
+```{r}
+countStringsList$artists[[1]]$sameAs[[4]]$identifier
+
+str(countContent$artists[[1]]$sameAs)
+
+spotify <-
+  lapply(all_results, function(x) {
+    lapply(x$events, function(event) {
+      if (length(event$performer) > 1) {
+        names <- rep(event$location$name, length(event$performer))
+      } else if (length(event$performer) == 1) {
+        names <- event$location$name
+      } else {
+        names <- NA  # or any other value you want to use for missing names
+      }
+      names
+    })
+  })
+
+venues_col <- unlist(venues) %>% as.data.frame()
+colnames(venues_col) <- "venue"
+```
+
+```{r}
+# Assuming countContent$artists[[1]]$sameAs is your list
+sameAs_list <- countContent$artists[[1]]$sameAs
+
+# Initialize a variable to store the Spotify URL
+spotify_url <- NULL
+
+# Iterate through the list and find the item with identifier "Spotify"
+for (item in sameAs_list) {
+  if (item$identifier == "spotify") {
+    spotify_url <- item$url
+    break  # Exit the loop once found
+  }
+}
+
+# Check if Spotify URL is found
+if (!is.null(spotify_url)) {
+  cat("Spotify URL:", spotify_url, "\n")
+} else {
+  cat("Spotify URL not found\n")
+}
+
+
+```
+
+
+
+# Older/test code
+```{r}
+# length(all_results[[1]]$events[[27]]$performer)
+# all_results[[1]]$events[[27]]$performer[[2]]$`x-performanceDate`
+
 artists_test <-
   venues <- lapply(all_results, function(x) {
   lapply(x$events, function(event) {
