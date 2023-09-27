@@ -9,15 +9,26 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
 ```
 
+
 ```{r}
 library(httr)
 library(lubridate)
 library(dplyr)
+library(spotifyr)
+library(tidyverse)
+library(tinyspotifyr)
+
+```
+
+# Jambase
+## accesses the API
+```{r}
+
 # url for the events page
 url <- "https://www.jambase.com/jb-api/v1/events"
 
 # date to get the next few months
-future_date <- Sys.Date() %m+% months(3)
+future_date <- Sys.Date() %m+% months(2)
 
 # gets the number of shows for the future date
 countString <- list(apikey = "e9bc7d9d-0946-43ec-a95e-b8f19cbbb6b1",
@@ -34,23 +45,14 @@ countContent <- content(countResponse,"parsed")
 
 numShows <- countContent$pagination$totalItems
 
-# numPages <- countContent$pagination$totalPages
-
-# queryString <- list(apikey = "e9bc7d9d-0946-43ec-a95e-b8f19cbbb6b1",
-#                     geoCityId ="jambase:4230765",
-#                     perPage = 100,
-#                     eventDateTo = future_date)
-# 
-# response <- VERB("GET", url, query = queryString, content_type("application/octet-stream"), accept("application/json"))
-# all <- content(response, "parsed")
 ```
 
-# Gets all the upcoming shows.
+## Gets all the upcoming shows.
 ```{r}
-# create an empty list to store the results
+# creates an empty list to store the results
 all_results <- list()
 
-# Define  common parameters
+# Defines the common parameters
 common_params <- list(
   apikey = "e9bc7d9d-0946-43ec-a95e-b8f19cbbb6b1",
   geoCityId = "jambase:4230765",
@@ -59,10 +61,10 @@ common_params <- list(
   expandExternalIdentifiers = "true"
 )
 
-# Specify the number of pages to fetch
+# Specifies the number of pages to fetch
 num_pages <- ceiling(numShows/100)
 
-# Loop through each page
+# Loops through each page
 for (page in 1:num_pages) {
   # Create a copy of the common parameters and set the 'page' parameter
   query_params <- c(common_params, page = page)
@@ -75,21 +77,14 @@ for (page in 1:num_pages) {
 }
 
 
-all_results[[1]]$events[[1]]$performer[[1]]$`x-externalIdentifiers`[[5]]$identifier[[1]]
-
-str(all_results[[1]]$events[[1]]$performer[[1]])
+# all_results[[1]]$events[[1]]$performer[[1]]$`x-externalIdentifiers`[[5]]$identifier[[1]]
+# 
+# str(all_results[[1]]$events[[1]]$performer[[1]])
 ```
 
-# Gets all the venues
+## Gets all the venues
 If there's more than 1 performer at the event, then the venue is repeated.
 ```{r}
-# Original Code
-# venues <- lapply(all_results, function(x) {
-#   lapply(x$events, function(event) {
-#     event$location$name
-#   })
-# })
-
 venues <-
   lapply(all_results, function(x) {
     lapply(x$events, function(event) {
@@ -108,16 +103,9 @@ venues_col <- unlist(venues) %>% as.data.frame()
 colnames(venues_col) <- "venue"
 ```
 
-# Gets the date of the show
+## Gets the date of the show
 If there's more than 1 performer at the event, then the date is repeated.
 ```{r}
-# Original Code
-# shows <- lapply(all_results, function(x) {
-#   lapply(x$events, function(event) {
-#     event$startDate
-#   })
-# })
-
 shows <-
   lapply(all_results, function(x) {
     lapply(x$events, function(event) {
@@ -136,27 +124,7 @@ shows_col <- unlist(shows) %>% as.data.frame()
 colnames(shows_col) <- "show_date"
 ```
 
-
-# old code to get artist name
-```{r}
-# artists <-
-#   value <- lapply(all_results, function(x) {
-#   lapply(x$events, function(event) {
-#     if (length(event$performer) > 1) {
-#       names <- lapply(event$performer, function(performer) performer$name)
-#     } else if (length(event$performer) == 1) {
-#       names <- event$performer[[1]]$name
-#     }
-#     names
-#   })
-# })
-# 
-# artists_col <- unlist(artists) %>% as.data.frame()
-# colnames(artists_col) <- "artists"
-#   
-```
-
-# gets the performance date for each band
+## Gets the performance date for each band
 ```{r}
 perf_date <-
   venues <- lapply(all_results, function(x) {
@@ -174,7 +142,7 @@ perf_col <- unlist(perf_date) %>% as.data.frame()
 colnames(perf_col) <- "perfdate"
 ```
 
-# New code to get artist name as well as spotify_id
+## Gets artist name and spotify_id for each artist
 ```{r}
 # Initialize an empty list to store performer names and Spotify identifiers
 performer_data <- list()
@@ -226,30 +194,176 @@ performer_df <- data.frame(
     }
   })
 )
-
+unique(venues_col$venue)
 ```
 
 
-# Merges dataframes
+## Merges dataframes
 ```{r}
 upcoming_shows <- cbind(venues_col,shows_col,performer_df) %>%
   mutate(show_date = as.Date(show_date,format = "%Y-%m-%d")) %>%
   filter(!grepl("Sofar",venue, ignore.case = TRUE)) %>%
-  filter(!(venue %in% c("Douglas Park",
-                     "Hyde Park Jazz",
-                     "Fairmont Chicago Millennium Park",
-                     "Epiphany Center for the Arts",
-                     "On Tour Brewing")))
+  filter(venue %in% c(
+    "Concord Music Hall",
+    "The Vic Theatre",
+    #"Subterranean",
+    #"Beat Kitchen",
+    "The Riviera Theatre",
+    "Byline Bank Aragon Ballroom",
+    "Radius",
+    "Lincoln Hall",
+    "Chop Shop",
+    "Martyrs",
+    "The Salt Shed",
+    "House of Blues",
+    "Bottom Lounge",
+    "Schubas",
+    "Metro",
+    #"United Center",
+    #"Joe’s On Weed Street",
+    "Park West"
+    #"Wintrust Arena",
+    #"Credit Union 1 Arena"
+    )
+)
 
-upcoming_shows %>% group_by(venue) %>% summarise(count = n()) %>% arrange(desc(count))
-upcoming_shows %>% summarise(count = n()) %>% arrange(desc(count))
-upcoming_shows %>% filter(venue %in% 'United Center')
+# upcoming_shows %>% group_by(venue) %>% summarise(count = n()) %>% arrange(desc(count))
+# upcoming_shows %>% summarise(count = n()) %>% arrange(desc(count))
+# upcoming_shows %>% filter(venue %in% 'United Center')
 ```
 
-# Removes duplicate Spotify Ids
+## Removes duplicates for when the artist plays multiple nights at the same venue
 ```{r}
-upcoming_shows1 <- upcoming_shows %>% distinct(Name, Spotify)
+upcoming_shows1 <- upcoming_shows  %>%
+  arrange(show_date) %>%
+  distinct(venue, Name, Spotify, .keep_all = TRUE)
 ```
 
 
-# END
+# Spotify
+## Sets up the environment
+```{r}
+Sys.setenv(SPOTIFY_CLIENT_ID = '9b5eb134223f4cb5a0c4834fa5742d9e')
+Sys.setenv(SPOTIFY_CLIENT_SECRET = 'b742be8a81ba469794bd3146dac1d080')
+
+access_token <- get_spotify_access_token()
+```
+
+## Gets the artists where the Spotify Id is missing
+```{r}
+missing_ids <- upcoming_shows1 %>%
+  filter(is.na(Spotify))
+```
+
+```{r}
+# Creates an empty dataframe to store the results
+results_df <- data.frame(Name = character(0), Spotify = character(0))
+
+# Iterates through each row in missing_ids
+for (i in 1:nrow(missing_ids)) {
+  # Get the value from the current row in missing_ids
+  length <- missing_ids$Name[i]
+  
+  # Runs the Spotify search for the current value
+  a <- search_spotify(
+    q = length,
+    type = 'artist',
+    market = 'US'
+  )
+    # Checks if the search results are empty
+  if (nrow(a) == 0) {
+    # If there are no results, skip to the next iteration
+    next
+  }
+  
+  # Filters the results to include only the matching artist with followers
+  filtered_results <- a %>% 
+    filter(name == length & followers.total > 0) %>%
+    select(name, popularity, followers.total, id, external_urls.spotify)
+  
+  # Find the maximum popularity within each group of the same name
+  max_followers <- filtered_results %>%
+    group_by(name) %>%
+    slice_max(order_by = followers.total) %>%
+    ungroup()
+  
+  # Append the results to the results dataframe
+  results_df <- rbind(results_df, max_followers)
+}
+
+```
+
+### Joins the artists with missing ids to the upcoming_shows1 df
+```{r}
+final_df <- upcoming_shows1 %>%
+  left_join(results_df, by = c("Name" = "name")) %>%
+  mutate(Spotify = coalesce(id, Spotify)) %>%
+  select(1:4)
+```
+
+## Creates dataframe of top 5 tracks
+```{r}
+   
+# Initialize an empty data frame to store the top tracks
+top_tracks_df <- data.frame(
+  artist_name = character(),
+  artist_id = character(),
+  duration_ms = integer(),
+  id = character(),
+  name = character(),
+  popularity = integer(),
+  stringsAsFactors = FALSE
+)
+
+# Iterates through each artist's Spotify ID
+for (spotify_id in final_df$Spotify) {
+  if (!is.na(spotify_id)) {
+    # Gets the top tracks for the current artist
+    artist_info <- get_artist(spotify_id)
+    top_tracks <- get_artist_top_tracks(spotify_id)
+    
+    # Checks if top_tracks is empty
+  if (length(top_tracks) == 0) {
+      top_tracks <- data.frame(
+        artist_name = artist_info$name,
+        artist_id = spotify_id,
+        duration_ms = NA,
+        id = NA,
+        name = NA,
+        popularity = NA,
+        stringsAsFactors = FALSE
+      )
+    } else {
+      top_tracks <- top_tracks %>%
+        mutate(artist_name = artist_info$name) %>%
+        mutate(artist_id = spotify_id) %>%
+        select(artist_name, artist_id, duration_ms, id, name, popularity) %>%
+        top_n(5)
+    }
+    
+    # Adds the top tracks to the data frame
+    top_tracks_df <- bind_rows(top_tracks_df, top_tracks)
+  }
+}
+
+# Resets row names (optional)
+rownames(top_tracks_df) <- NULL
+
+top_tracks_df
+
+```
+
+```{r}
+app_df <- right_join(upcoming_shows1, top_tracks_df, by = c("Spotify" = "artist_id")) %>%
+  select(venue,
+         show_date,
+         Name,
+         Spotify,
+         name,
+         id
+  ) %>%
+  mutate(track_uri = paste('spotify:track:',id,sep =""))
+colnames(app_df) <- c('venue','show_date', 'artist', 'artist_id','song', 'song_id','track_uri')
+
+```
+

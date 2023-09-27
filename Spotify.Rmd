@@ -1,0 +1,169 @@
+---
+title: "Spotify"
+author: "Mike Kaminski"
+date: "2023-09-13"
+output: html_document
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning=FALSE)
+```
+
+```{r}
+library(spotifyr)
+library(tidyverse)
+
+```
+
+```{r}
+Sys.setenv(SPOTIFY_CLIENT_ID = '9b5eb134223f4cb5a0c4834fa5742d9e')
+Sys.setenv(SPOTIFY_CLIENT_SECRET = 'b742be8a81ba469794bd3146dac1d080')
+
+access_token <- get_spotify_access_token()
+```
+
+```{r}
+missing_ids <- upcoming_shows1 %>%
+  filter(is.na(Spotify))
+```
+
+```{r}
+test <- search_spotify(
+  q = 'Nana Kwabena',
+  type = 'artist',
+  market = 'US'
+) 
+length <- 'Greg Hill'
+
+test %>% filter(name == length & followers.total > 0)
+```
+
+```{r}
+# Create an empty dataframe to store the results
+results_df <- data.frame(Name = character(0), Spotify = character(0))
+
+# Iterate through each row in missing_ids
+for (i in 1:nrow(missing_ids)) {
+  # Get the value from the current row in missing_ids
+  length <- missing_ids$Name[i]
+  
+  # Run the Spotify search for the current value
+  a <- search_spotify(
+    q = length,
+    type = 'artist',
+    market = 'US'
+  )
+    # Check if the search results are empty
+  if (nrow(a) == 0) {
+    # If there are no results, skip to the next iteration
+    next
+  }
+  
+  # Filter the results to include only the matching artist with followers
+  filtered_results <- a %>% 
+    filter(name == length & followers.total > 0) %>%
+    select(name, popularity, followers.total, id, external_urls.spotify)
+  
+  # Find the maximum popularity within each group of the same name
+  max_followers <- filtered_results %>%
+    group_by(name) %>%
+    slice_max(order_by = followers.total) %>%
+    ungroup()
+  
+  # Append the results to the results dataframe
+  results_df <- rbind(results_df, max_followers)
+}
+
+# Now results_df contains the combined results for all iterations
+
+```
+
+```{r}
+final_df <- upcoming_shows1 %>%
+  left_join(results_df, by = c("Name" = "name")) %>%
+  mutate(Spotify = coalesce(id, Spotify)) %>%
+  select(1:4)
+
+```
+
+
+```{r}
+test <- get_artist_top_tracks('6QDtFjZaUT7B8Xqq677wCq') %>% 
+  select(artists,duration_ms, id, name, popularity)
+
+a<- search_spotify(q = 'Nana Kwabena')
+a
+str(test)
+
+test$artists[[1]]$name
+
+test$artists[artists$id]
+
+```
+
+#creates dataframe of top 5 tracks
+```{r}
+   
+# Initialize an empty data frame to store the top tracks
+top_tracks_df <- data.frame(
+  artist_name = character(),
+  artist_id = character(),
+  duration_ms = integer(),
+  id = character(),
+  name = character(),
+  popularity = integer(),
+  stringsAsFactors = FALSE
+)
+
+# Iterate through each artist's Spotify ID
+for (spotify_id in final_df$Spotify) {
+  if (!is.na(spotify_id)) {
+    # Get the top tracks for the current artist
+    artist_info <- get_artist(spotify_id)
+    top_tracks <- get_artist_top_tracks(spotify_id)
+    
+    # Check if top_tracks is empty
+  if (length(top_tracks) == 0) {
+      top_tracks <- data.frame(
+        artist_name = artist_info$name,
+        artist_id = spotify_id,
+        duration_ms = NA,
+        id = NA,
+        name = NA,
+        popularity = NA,
+        stringsAsFactors = FALSE
+      )
+    } else {
+      top_tracks <- top_tracks %>%
+        mutate(artist_name = artist_info$name) %>%
+        mutate(artist_id = spotify_id) %>%
+        select(artist_name, artist_id, duration_ms, id, name, popularity) %>%
+        top_n(5)
+    }
+    
+    # Add the top tracks to the data frame
+    top_tracks_df <- bind_rows(top_tracks_df, top_tracks)
+  }
+}
+
+# Reset row names (optional)
+rownames(top_tracks_df) <- NULL
+
+# View the resulting data frame
+top_tracks_df
+
+
+```
+# tracks by venue
+```{r}
+join_df <- top_tracks_df %>%
+  left_join(upcoming_shows, by = c('artist_name' = 'Name')) %>%
+  select(show_date, venue, artist_name, name, duration_ms, popularity, artist_id, id) 
+colnames(join_df) <- c('date','venue','artist_name','song_name','track_length','song_popularity','artist_id','song_id')
+```
+```{r}
+as.Date(upcoming_shows1$show_date[1], format = "%B")
+format(as.Date(upcoming_shows1$show_date[1], format="%d/%m/%Y"),"%b %d")
+str(upcoming_shows1$show_date[1]) ?strptime
+```
+

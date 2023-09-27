@@ -1,0 +1,87 @@
+---
+title: "GeneratePlaylist"
+author: "Mike Kaminski"
+date: "2023-09-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+# Libraries
+```{r}
+# devtools::install_github("troyhernandez/tinyspotifyr")
+library(tinyspotifyr)
+library(spotifyr)
+
+```
+
+# Access token
+```{r}
+
+Sys.setenv(SPOTIFY_CLIENT_ID = '9b5eb134223f4cb5a0c4834fa5742d9e')
+Sys.setenv(SPOTIFY_CLIENT_SECRET = 'b742be8a81ba469794bd3146dac1d080')
+
+access_token <- tinyspotifyr::get_spotify_access_token()
+```
+
+# Gets the Playlists
+```{r}
+# Creates a playlist name variables
+playlist_name <- "Daily Radio1"
+# playlist_name <- paste0(input$venue_filter,input$date_range[1],input$date_range[1])
+
+# Gets a list of playlists
+my_playlists <- tinyspotifyr::get_my_playlists(limit = 50)
+
+# makes sure the playlist exists
+playlist_logical <- (my_playlists$name == playlist_name)
+
+# Find's the most recent playlist or creates an empty one
+if(sum(playlist_logical) > 0){
+  ind <- which(playlist_logical)
+  dr <- my_playlists[ind, ]
+} else {
+  dr <- create_playlist('mikekaminski25', playlist_name, public = TRUE, description = 'test')
+}
+```
+
+# Adds songs to a playlist
+```{r}
+# The discover weekly playlist is used as a base line
+discover_weekly <- my_playlists[which(my_playlists$name == "Discover Weekly"),]
+
+# gets all the tracks currently on the playlist
+dw_tracks <- get_playlist_tracks(discover_weekly$id)
+
+# gets all the playlist tracks
+dw_uri <- dw_tracks$track.uri
+str(dw_uri)
+# dw_uri <- 'spotify:track:3ex3GcOngJvNzvxsgnu5p3'
+
+# reorders and replaces the tracks on the playlist
+reorder_replace_playlist_items(playlist_id = dr$id, uris = dw_uri)
+
+# get_tracks('3ex3GcOngJvNzvxsgnu5p3')
+```
+
+```{r}
+# library(spotifyr)
+# 
+# Sys.setenv(SPOTIFY_CLIENT_ID = '9b5eb134223f4cb5a0c4834fa5742d9e')
+# Sys.setenv(SPOTIFY_CLIENT_SECRET = 'b742be8a81ba469794bd3146dac1d080')
+# 
+# access_token <- get_spotify_access_token()
+# 
+# create_playlist('mikekaminski25', 'bbb', public = TRUE, description = 'test')
+# 
+# get_playlist()
+```
+
+```{r}
+add_tracks_to_playlist(
+  playlist_id = 'venue from today until weekend',
+  uris = c('1gyee1JuFFiP476LQpRMYU','6dRAAG4sB71NAtVCHJep7s'),
+)
+```
