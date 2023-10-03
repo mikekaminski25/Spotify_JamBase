@@ -10,25 +10,23 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
 ```
 
 
-```{r}
+```{r libraries, include=FALSE}
 library(httr)
 library(lubridate)
-library(dplyr)
 library(spotifyr)
 library(tidyverse)
 library(tinyspotifyr)
-
 ```
 
 # Jambase
-## accesses the API
+## Accesses the API
 ```{r}
 
 # url for the events page
 url <- "https://www.jambase.com/jb-api/v1/events"
 
 # date to get the next few months
-future_date <- Sys.Date() %m+% months(2)
+future_date <- Sys.Date() %m+% months(1)
 
 # gets the number of shows for the future date
 countString <- list(apikey = "e9bc7d9d-0946-43ec-a95e-b8f19cbbb6b1",
@@ -194,7 +192,6 @@ performer_df <- data.frame(
     }
   })
 )
-unique(venues_col$venue)
 ```
 
 
@@ -265,7 +262,7 @@ for (i in 1:nrow(missing_ids)) {
   length <- missing_ids$Name[i]
   
   # Runs the Spotify search for the current value
-  a <- search_spotify(
+  a <- spotifyr::search_spotify(
     q = length,
     type = 'artist',
     market = 'US'
@@ -298,7 +295,8 @@ for (i in 1:nrow(missing_ids)) {
 final_df <- upcoming_shows1 %>%
   left_join(results_df, by = c("Name" = "name")) %>%
   mutate(Spotify = coalesce(id, Spotify)) %>%
-  select(1:4)
+  select(1:4) %>%
+  na.omit()
 ```
 
 ## Creates dataframe of top 5 tracks
@@ -319,8 +317,8 @@ top_tracks_df <- data.frame(
 for (spotify_id in final_df$Spotify) {
   if (!is.na(spotify_id)) {
     # Gets the top tracks for the current artist
-    artist_info <- get_artist(spotify_id)
-    top_tracks <- get_artist_top_tracks(spotify_id)
+    artist_info <- spotifyr::get_artist(spotify_id)
+    top_tracks <- spotifyr::get_artist_top_tracks(spotify_id)
     
     # Checks if top_tracks is empty
   if (length(top_tracks) == 0) {
@@ -347,14 +345,14 @@ for (spotify_id in final_df$Spotify) {
 }
 
 # Resets row names (optional)
-rownames(top_tracks_df) <- NULL
+# rownames(top_tracks_df) <- NULL
 
-top_tracks_df
+# top_tracks_df
 
 ```
 
 ```{r}
-app_df <- right_join(upcoming_shows1, top_tracks_df, by = c("Spotify" = "artist_id")) %>%
+app_df <- right_join(final_df, top_tracks_df, by = c("Spotify" = "artist_id")) %>%
   select(venue,
          show_date,
          Name,
@@ -363,7 +361,17 @@ app_df <- right_join(upcoming_shows1, top_tracks_df, by = c("Spotify" = "artist_
          id
   ) %>%
   mutate(track_uri = paste('spotify:track:',id,sep =""))
+
 colnames(app_df) <- c('venue','show_date', 'artist', 'artist_id','song', 'song_id','track_uri')
 
+write.csv(app_df, "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/app_df.csv")
+```
+
+```{r}
+write.csv(upcoming_shows1, "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/upcoming_shows1.csv")
+write.csv(top_tracks_df, "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/top_tracks_df.csv")
+write.csv(results_df, "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/results_df.csv")
+write.csv(final_df, "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/final_df.csv")
+results_df
 ```
 

@@ -7,56 +7,13 @@
 #    http://shiny.rstudio.com/
 #
 
-library(shiny)
-###############
-# Define UI for application that draws a histogram
-ui <- fluidPage(
-  sidebarLayout(
-    sidebarPanel(
-      dateRangeInput("date_range", "Select Date Range:", start = Sys.Date(), end = Sys.Date() %m+% months(1)),
-      selectInput("venue_filter", "Select Venue:", choices = unique(upcoming_shows$venue), multiple = TRUE),
-      
-      # This button creates a dataframe
-      actionButton("generate_button", "Generate Playlist")
-    ),
-    mainPanel(
-      dataTableOutput("date_artist_table"),
-      # Your other UI elements can go here
-    )
-  )
-)
-
-
-server <- function(input, output) {
-  filtered_data <- reactive({
-    # Filter data based on selected date range and venues
-    subset(upcoming_shows, show_date >= input$date_range[1] & show_date <= input$date_range[2] & venue %in% input$venue_filter)
-  })
-  
-  # Create a data frame with distinct date and artist
-  selected_data <- reactive({
-    data <- filtered_data()
-    data %>%
-      distinct(Name, show_date)
-  })
-  
-  # Render the table with selected date and artist
-  output$date_artist_table <- renderDataTable({
-    selected_data()
-  })
-  
-  # Define any other server logic you need
-}
-
-# Run the application 
-shinyApp(ui = ui, server = server)
-
-###############################
 
 library(shiny)
 if ("package:spotifyr" %in% search()) {
   detach("package:spotifyr", unload = TRUE)
 }
+
+app_df <- read_csv("PlaylistCreator/app_df.csv") %>% select(-1)
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
@@ -66,7 +23,7 @@ ui <- fluidPage(
       selectInput("venue_filter", "Select Venue:", choices = c("All", unique(app_df$venue)), multiple = TRUE),
       
       # Add an action button to trigger dataframe generation
-      actionButton("generate_button", "Generate Dataframe")
+      actionButton("generate_button", "Generate Playlist")
     ),
     mainPanel(
       dataTableOutput("date_artist_table"),
@@ -122,11 +79,13 @@ server <- function(input, output) {
     
     access_token <- tinyspotifyr::get_spotify_access_token()
     
-    playlist_name <- paste(paste(venue_name, ":", sep = ""),
-                           format(as.Date(date_range1, format = "%d/%m/%Y"), "%b %d"),
-                           "-",
-                           format(as.Date(date_range2, format = "%d/%m/%Y"), "%b %d"),
-                           sep = " ")
+    # playlist_name <- paste(paste(venue_name, ":", sep = ""),
+    #                        format(as.Date(date_range1, format = "%d/%m/%Y"), "%b %d"),
+    #                        "-",
+    #                        format(as.Date(date_range2, format = "%d/%m/%Y"), "%b %d"),
+    #                        sep = " ")
+    playlist_name <- paste('Next30:', venue_name, sep = " ")
+                          
     
     # Check if the playlist exists
     my_playlists <- tinyspotifyr::get_my_playlists(limit = 50)
@@ -137,7 +96,13 @@ server <- function(input, output) {
       ind <- which(playlist_logical)
       dr <- my_playlists[ind, ]
     } else {
-      dr <- create_playlist('mikekaminski25', playlist_name, public = TRUE, description = 'test')
+      dr <- create_playlist('mikekaminski25', playlist_name, public = TRUE,
+                            description = paste('Top 5 songs on Spotify for bands playing at',
+                                                venue_name,
+                                                'between',
+                                                format(as.Date(date_range1, format = "%d/%m/%Y"), "%b %d"),
+                                                'and',
+                                                format(as.Date(date_range2, format = "%d/%m/%Y"), "%b %d"), sep = ' '))
     }
     
     playlist_uri <- playlist_songs$track_uri
