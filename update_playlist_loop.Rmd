@@ -144,3 +144,37 @@ new_counts <- my_playlists %>% select(name, tracks.total) %>% filter(grepl('Next
 # left_join(old_counts, new_counts, by = 'name', keep = TRUE)
 
 ```
+
+
+```{r}
+my_playlists <- tinyspotifyr::get_my_playlists(limit = 50) # gets the playlist names
+
+library(tidymodels)
+
+
+test <- get_playlist_tracks('3Co2Gz21d7gnRVknnHA9Hs')
+glimpse(test$track.artists)
+
+
+test$track.artists[[1]]$name
+
+sapply(test$track.artists, function(x) x$name)
+
+loop_df %>% filter(venue %in% 'The Salt Shed') %>% distinct(artist,show_date) %>% arrange(show_date)
+```
+
+
+```{r}
+devtools::install_github("rstudio/addinexamples", type = "source")
+```
+
+
+
+
+
+
+
+
+
+
+
