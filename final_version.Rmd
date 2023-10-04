@@ -26,12 +26,28 @@ library(tinyspotifyr)
 url <- "https://www.jambase.com/jb-api/v1/events"
 
 # date to get the next few months
-future_date <- Sys.Date() %m+% months(1)
+current_date <- Sys.Date()
+most_recent_run_date <- Sys.Date() + 29
+future_date <- Sys.Date() + 30
+
+included_venues <- "Bottom%Lounge|Byline%Bank%Aragon%Ballroom|Chop%Shop|Concord%Music%Hall|House%of%Blues|Lincoln%Hall|Martyrs|Metro|Park%West|Radius|Schubas|The%Riviera%Theatre|The%Salt%Shed|The%Vic%Theatre"
+
 
 # gets the number of shows for the future date
 countString <- list(apikey = "e9bc7d9d-0946-43ec-a95e-b8f19cbbb6b1",
-                    geoCityId ="jambase:4230765",
-                    eventDateTo = future_date) # this is the Chicago geoCityId
+                    geoCityId ="jambase:4230765", # this is the Chicago geoCityId
+                    venueName = included_venues,
+                    eventDateFrom = current_date,
+                    eventDateTo = future_date
+                    )
+
+# gets the number of show from the newest date
+countString <- list(apikey = "e9bc7d9d-0946-43ec-a95e-b8f19cbbb6b1",
+                    geoCityId ="jambase:4230765", # this is the Chicago geoCityId
+                    venueName = included_venues,
+                    eventDateFrom = current_date,
+                    eventDateTo = future_date
+                    )
 
 countResponse <- VERB("GET",
                       url,
@@ -45,6 +61,20 @@ numShows <- countContent$pagination$totalItems
 
 ```
 
+```{r}
+# str(countContent)
+# 
+# countContent$events[[1]]$location$name
+# 
+# # Assuming countContent$events is a list
+# for (i in 1:length(countContent$events)) {
+#   # Extract the name from each element
+#   name <- countContent$events[[i]]$location$name
+#   print(name)
+# }
+```
+
+
 ## Gets all the upcoming shows.
 ```{r}
 # creates an empty list to store the results
@@ -55,6 +85,8 @@ common_params <- list(
   apikey = "e9bc7d9d-0946-43ec-a95e-b8f19cbbb6b1",
   geoCityId = "jambase:4230765",
   perPage = 100,
+  venueName = included_venues,
+  eventDateFrom = current_date,
   eventDateTo = future_date,
   expandExternalIdentifiers = "true"
 )
@@ -99,6 +131,23 @@ venues <-
 
 venues_col <- unlist(venues) %>% as.data.frame()
 colnames(venues_col) <- "venue"
+
+unique(venues_col) %>% arrange(venue)
+
+# Bottom%Lounge
+# Byline%Bank%Aragon%Ballroom
+# Chop%Shop
+# Concord%Music%Hall
+# House%of%Blues
+# Lincoln%Hall
+# Martyrs
+# Metro
+# Park%West
+# Radius
+# Schubas
+# The%Riviera%Theatre
+# The%Salt%Shed
+# The%Vic%Theatre
 ```
 
 ## Gets the date of the show
@@ -198,31 +247,35 @@ performer_df <- data.frame(
 ## Merges dataframes
 ```{r}
 upcoming_shows <- cbind(venues_col,shows_col,performer_df) %>%
-  mutate(show_date = as.Date(show_date,format = "%Y-%m-%d")) %>%
-  filter(!grepl("Sofar",venue, ignore.case = TRUE)) %>%
-  filter(venue %in% c(
-    "Concord Music Hall",
-    "The Vic Theatre",
-    #"Subterranean",
-    #"Beat Kitchen",
-    "The Riviera Theatre",
-    "Byline Bank Aragon Ballroom",
-    "Radius",
-    "Lincoln Hall",
-    "Chop Shop",
-    "Martyrs",
-    "The Salt Shed",
-    "House of Blues",
-    "Bottom Lounge",
-    "Schubas",
-    "Metro",
-    #"United Center",
-    #"Joe’s On Weed Street",
-    "Park West"
-    #"Wintrust Arena",
-    #"Credit Union 1 Arena"
-    )
-)
+  mutate(show_date = as.Date(show_date,format = "%Y-%m-%d"))
+
+
+# unique(upcoming_shows$venue)
+  
+#   # filter(!grepl("Sofar",venue, ignore.case = TRUE)) %>%
+#   filter(venue %in% c(
+#     "Concord Music Hall",
+#     "The Vic Theatre",
+#     #"Subterranean",
+#     #"Beat Kitchen",
+#     "The Riviera Theatre",
+#     "Byline Bank Aragon Ballroom",
+#     "Radius",
+#     "Lincoln Hall",
+#     "Chop Shop",
+#     "Martyrs",
+#     "The Salt Shed",
+#     "House of Blues",
+#     "Bottom Lounge",
+#     "Schubas",
+#     "Metro",
+#     #"United Center",
+#     #"Joe’s On Weed Street",
+#     "Park West"
+#     #"Wintrust Arena",
+#     #"Credit Union 1 Arena"
+#     )
+# )
 
 # upcoming_shows %>% group_by(venue) %>% summarise(count = n()) %>% arrange(desc(count))
 # upcoming_shows %>% summarise(count = n()) %>% arrange(desc(count))
@@ -297,10 +350,12 @@ final_df <- upcoming_shows1 %>%
   mutate(Spotify = coalesce(id, Spotify)) %>%
   select(1:4) %>%
   na.omit()
+
+unique(final_df$venue)
 ```
 
 ## Creates dataframe of top 5 tracks
-```{r}
+```{r message = FALSE}
    
 # Initialize an empty data frame to store the top tracks
 top_tracks_df <- data.frame(
@@ -362,16 +417,30 @@ app_df <- right_join(final_df, top_tracks_df, by = c("Spotify" = "artist_id")) %
   ) %>%
   mutate(track_uri = paste('spotify:track:',id,sep =""))
 
+
+
 colnames(app_df) <- c('venue','show_date', 'artist', 'artist_id','song', 'song_id','track_uri')
 
-write.csv(app_df, "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/app_df.csv")
+# Specify the file path
+file_path <- "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/app_df.csv"
+
+# Check if the file exists
+if (file.exists(file_path)) {
+  # Delete the existing file
+  file.remove(file_path)
+}
+
+# Write the CSV file
+write.csv(app_df, file_path)
+
+# write.csv(app_df, "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/app_df.csv", file.exists = FALSE)
 ```
 
 ```{r}
-write.csv(upcoming_shows1, "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/upcoming_shows1.csv")
-write.csv(top_tracks_df, "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/top_tracks_df.csv")
-write.csv(results_df, "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/results_df.csv")
-write.csv(final_df, "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/final_df.csv")
-results_df
+# write.csv(upcoming_shows1, "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/upcoming_shows1.csv")
+# write.csv(top_tracks_df, "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/top_tracks_df.csv")
+# write.csv(results_df, "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/results_df.csv")
+# write.csv(final_df, "C:/Users/mikek/Desktop/R Code/Spotify_Jambase/Spotify_JamBase/PlaylistCreator/final_df.csv")
+
 ```
 

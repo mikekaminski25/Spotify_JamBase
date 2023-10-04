@@ -20,7 +20,7 @@ library(tinyspotifyr)
 
 #loads data
 ```{r message = FALSE}
-loop_df <- read_csv("PlaylistCreator/app_df.csv") %>% select(-1)
+loop_df <- read_csv("PlaylistCreator/app_df.csv") %>% select(-1)%>% arrange(venue,show_date)
 # app_df <- read_csv("PlaylistCreator/app_df.csv") %>% select(-1) %>% filter(venue %in% 'The Salt Shed' & show_date < '2023-10-23')
 # loop_df <- read_csv("PlaylistCreator/app_df.csv") %>% select(-1) %>% filter(venue %in% 'The Salt Shed' & show_date > '2023-10-03')
 ```
@@ -40,13 +40,16 @@ unique_venue <- unique(loop_df$venue)
 date_range1 <- Sys.Date()
 date_range2 <- Sys.Date() + 30
 
+# loop_df %>% filter(venue %in% 'Martyrs’')
+# unique_venue <- 'Martyrs’'
+
 #For loop that creates new playlists if necessary.  It will be used initially and then afterwards if new venues are added.  Right now there are only 12ish venues
 for (uv in unique_venue) {
   # defines the playlist name
   playlist_name <- paste('Next30:',uv, sep = " ")  # the name of the venue
 
   playlist <- create_playlist('mikekaminski25', playlist_name, public = TRUE,
-                        description = paste('Top 5 songs on Spotify for bands playing at',
+                        description = paste('Top songs on Spotify for bands playing at',
                                             uv,
                                             'between',
                                             format(as.Date(date_range1, format = "%d/%m/%Y"), "%b %d"),
@@ -64,146 +67,80 @@ for (uv in unique_venue) {
   }
 ```
 
+
 # Updates the playlists
 ```{r}
-  # defines the playlist name
-  playlist_name <- 'Next 30: The Salt Shed'
+# gets all the playlists
+my_playlists <- tinyspotifyr::get_my_playlists(limit = 50) # gets the playlist names
 
-  playlist <- create_playlist('mikekaminski25', playlist_name, public = TRUE,
-                        description = paste('Top 5 songs on Spotify for bands playing at',
-                                            venue,
-                                            'between',
-                                            format(as.Date(date_range1, format = "%d/%m/%Y"), "%b %d"),
-                                            'and',
-                                            format(as.Date(date_range2, format = "%d/%m/%Y"), "%b %d"), sep = ' '))
-  
-  playlist_uri <- loop_df %>% filter(venue %in% "The Salt Shed") %>% select(track_uri) %>% unlist()
-  
-  playlist_id <- sub("spotify:playlist:", "", playlist$uri)
-    
-  batch_size <- 100
-  
-  for (i in seq(1, length(playlist_uri), by = batch_size)) {
-    batch <- playlist_uri[i:min(i + batch_size - 1, length(playlist_uri))]
-    add_tracks_to_playlist(playlist_id, batch)
-  }
-  
-  batch <- playlist_uri[i:min(i + batch_size - 1, length(playlist_uri))]
-```
+old_counts <- my_playlists %>% select(name, tracks.total) %>% filter(grepl('Next30',name))
 
-
-
-```{r}
-# gets the unique venues
+# sets venue and date variables
 unique_venue <- unique(loop_df$venue)
-
-# gets the number of playlists
-my_playlists <- tinyspotifyr::get_my_playlists(limit = 50) # gets the playlist names
-
-#For loop that creates new playlists if necessary.  It will be used initially and then afterwards if new venues are added.  Right now there are only 12ish venues
-for (venue in unique_venue) {
-  # defines the playlist name
-  playlist_name <- paste('Next30:',venue, sep = " ")  # the name of the venue
-
-  # checks to see if the playlist exists.  Playlist_logical is boolean TRUE/FALE.  
-  playlist_logical <- (my_playlists$name == playlist_name)
-  
-  # Ind tells us which playlist matches. dr pulls the data attached to the playlist. playlist_id provides the playlist_id needed for some of the other   functions later in the code.
-  if(sum(playlist_logical) > 0){
-    ind <- which(playlist_logical)
-    dr <- my_playlists[ind, ]
-    playlist_id <- sub("spotify:playlist:", "", dr$uri)
-  } else {
-        dr <- create_playlist('mikekaminski25', playlist_name, public = TRUE,
-                              description = paste('Top 5 songs on Spotify for bands playing at',
-                                                  venue_name,
-                                                  'between',
-                                                  format(as.Date(date_range1, format = "%d/%m/%Y"), "%b %d"),
-                                                  'and',
-                                                  format(as.Date(date_range2, format = "%d/%m/%Y"), "%b %d"), sep = ' '))
-        playlist_id <- sub("spotify:playlist:", "", dr$uri)
-  }
-
-  old_playlist <- get_playlist_tracks(playlist_id) 
-  old_playlist_tracks <- old_playlist$track.id
-  
-  new_playlist <-
-reorder_replace_playlist_items 
-
-```
-
-```{r}
-my_playlists <- tinyspotifyr::get_my_playlists(limit = 50) # gets the playlist names
-playlist_name <- "Next30: test The Salt Shed"
-playlist_logical <- (my_playlists$name == playlist_name)
-ind <- which(playlist_logical)
-dr <- my_playlists[ind, ]
-playlist_id <- sub("spotify:playlist:", "", dr$uri)
-
-a <- tinyspotifyr::get_playlist_tracks(playlist_id) 
-df1 <- a$track.id
-
-test_df <- loop_df |>
-  filter(venue %in% 'The Salt Shed' & show_date > '2023-10-03')
-
-df2 <- test_df$song_id
-
-old_songs <- paste("spotify:track:",setdiff(df1,df2),sep ="")
-new_songs <- paste("spotify:track:",setdiff(df2,df1),sep ="")
-
-add_items_to_playlist(
-  playlist_id,
-  new_songs
-  )
-
-remove_tracks_from_playlist(
-  playlist_id,
-  new_songs
-)
-
 date_range1 <- Sys.Date()
 date_range2 <- Sys.Date() + 30
-change_playlist_details(playlist_id,
-                        description = paste('Top 5 songs on Spotify for bands playing at',
-                        venue,
-                        'between',
-                        format(as.Date(date_range1, format = "%d/%m/%Y"), "%b %d"),
-                        'and',
-                        format(as.Date(date_range2, format = "%d/%m/%Y"), "%b %d"), sep = ' ')))
-```
-```{r}
-unique_venue <- unique(app_df$venue)
 
-for (venue in unique_venue) {
-  my_playlists <- tinyspotifyr::get_my_playlists(limit = 50) # gets the playlist names
-
-  playlist_name <- paste('Next30:',venue, sep = " ")  # the name of the venue
-  # playlist_name <- "Next30: The Salt Shed"
-
-# Find the most recent playlist for the venue or create a new, empty playlist for the venue
-playlist_logical <- (my_playlists$name == playlist_name)
-ind <- which(playlist_logical)
-dr <- my_playlists[ind, ]
-playlist_id <- sub("spotify:playlist:", "", dr$uri)
-
-
-
-str(df1)
-
-if(sum(playlist_logical) > 0){
+#####FOR LOOP
+for (uv in unique_venue) {
+  
+  # defines the playlist name
+  playlist_name <- paste('Next30:',uv, sep = " ")  # the name of the venue
+  
+  # Logical to get the playlist that matches
+  playlist_logical <- (my_playlists$name == playlist_name)
+  
+  # Other variables, eventually landing on the playlist_id
   ind <- which(playlist_logical)
   dr <- my_playlists[ind, ]
-} else {
-      dr <- create_playlist('mikekaminski25', playlist_name, public = TRUE,
-                            description = paste('Top 5 songs on Spotify for bands playing at',
-                                                venue_name,
-                                                'between',
-                                                format(as.Date(date_range1, format = "%d/%m/%Y"), "%b %d"),
-                                                'and',
-                                                format(as.Date(date_range2, format = "%d/%m/%Y"), "%b %d"), sep = ' '))
+  playlist_id <- sub("spotify:playlist:", "", dr$uri)
+
+  # gets the current tracks
+  old_playlist_tracks <- get_playlist_tracks(playlist_id) 
+  old_playlist_track_ids <- paste("spotify:track:", old_playlist_tracks$track.id, sep="") %>%unlist()
+  
+  # gets updated track list from the loff_df from before
+  new_playlist_track_ids <- loop_df %>% filter(venue %in% uv) %>% select(track_uri) %>% unlist()
+  
+  # identifies the songs that are different
+  old_songs <- setdiff(old_playlist_track_ids,new_playlist_track_ids)
+  new_songs <- setdiff(new_playlist_track_ids,old_playlist_track_ids)
+    
+  # Adds new songs
+  if (length(new_songs) == 0) {
+    # Skip the code if new_songs is empty
+    cat("No new songs to add.\n")
+    } else {
+    
+    # Calculate the batch size
+    batch_size <- 100
+    
+    # Add items to the playlist in batches
+    for (i in seq(1, length(new_songs), by = batch_size)) {
+      batch <- new_songs[i:min(i + batch_size - 1, length(new_songs))]
+      add_items_to_playlist(playlist_id, batch)
+    }
+  }
+
+  #removes the old songs
+  remove_tracks_from_playlist(
+    playlist_id,
+    old_songs
+  )
+  
+  # updates the playlist details
+  change_playlist_details(playlist_id,
+                        description = paste('Top songs on Spotify for bands playing at',
+                        uv,
+                        'between',
+                        format(as.Date(date_range1, format = "%d/%m/%Y"), "%b %d"),
+                        '-',
+                        format(as.Date(date_range2, format = "%d/%m/%Y"), "%b %d"), sep = ' '))
 }
 
-reorder_replace_playlist_items 
+my_playlists <- tinyspotifyr::get_my_playlists(limit = 50) # gets the playlist names
+
+new_counts <- my_playlists %>% select(name, tracks.total) %>% filter(grepl('Next30',name))
+
+# left_join(old_counts, new_counts, by = 'name', keep = TRUE)
 
 ```
-
