@@ -20,7 +20,7 @@ library(tinyspotifyr)
 
 #loads data
 ```{r message = FALSE}
-loop_df <- read_csv("PlaylistCreator/app_df.csv") %>% select(-1)%>% arrange(venue,show_date)
+loop_df <- read_csv("PlaylistCreator/app_df.csv") %>% select(-1)%>% arrange(venue,show_date) %>% na.omit()
 # app_df <- read_csv("PlaylistCreator/app_df.csv") %>% select(-1) %>% filter(venue %in% 'The Salt Shed' & show_date < '2023-10-23')
 # loop_df <- read_csv("PlaylistCreator/app_df.csv") %>% select(-1) %>% filter(venue %in% 'The Salt Shed' & show_date > '2023-10-03')
 ```
@@ -41,7 +41,7 @@ date_range1 <- Sys.Date()
 date_range2 <- Sys.Date() + 30
 
 # loop_df %>% filter(venue %in% 'Martyrs’')
-# unique_venue <- 'Martyrs’'
+# unique_venue <- 'The Riviera Theatre'
 
 #For loop that creates new playlists if necessary.  It will be used initially and then afterwards if new venues are added.  Right now there are only 12ish venues
 for (uv in unique_venue) {
@@ -56,7 +56,7 @@ for (uv in unique_venue) {
                                             'and',
                                             format(as.Date(date_range2, format = "%d/%m/%Y"), "%b %d"), sep = ' '))
   
-  playlist_uri <- loop_df %>% filter(venue %in% uv) %>% select(track_uri) %>% unlist()
+  playlist_uri <- loop_df %>% filter(venue %in% uv) %>% select(track_uri) %>% na.omit() %>% unlist()
   playlist_id <- sub("spotify:playlist:", "", playlist$uri)
     
   batch_size <- 100
@@ -67,7 +67,6 @@ for (uv in unique_venue) {
   }
 ```
 
-
 # Updates the playlists
 ```{r}
 # gets all the playlists
@@ -77,6 +76,7 @@ old_counts <- my_playlists %>% select(name, tracks.total) %>% filter(grepl('Next
 
 # sets venue and date variables
 unique_venue <- unique(loop_df$venue)
+# uv <- unique_venue
 date_range1 <- Sys.Date()
 date_range2 <- Sys.Date() + 30
 
@@ -94,10 +94,26 @@ for (uv in unique_venue) {
   dr <- my_playlists[ind, ]
   playlist_id <- sub("spotify:playlist:", "", dr$uri)
 
-  # gets the current tracks
-  old_playlist_tracks <- get_playlist_tracks(playlist_id) 
-  old_playlist_track_ids <- paste("spotify:track:", old_playlist_tracks$track.id, sep="") %>%unlist()
+  # Number of track on the playlist
+  old_playlist_tracks <- old_counts[grep(uv, old_counts$name), c("tracks.total")]
+  batch_size <- 100
   
+  # Calculate the number of iterations needed
+  num_iterations <- ceiling(old_playlist_tracks / batch_size)
+  
+  # Initialize an empty vector to store all the playlist tracks
+  old_playlist_track_ids <- character(0)
+  
+  # Loop through the iterations
+  for (i in 1:num_iterations) {
+    songs <- get_playlist_tracks(playlist_id, offset = (i*100-100)) 
+    track_ids <- paste("spotify:track:", songs$track.id, sep="") %>%unlist()
+    
+    # Extract the track names from the current batch and add them to the 'all_tracks' vector
+    old_playlist_track_ids <- c(old_playlist_track_ids, track_ids)
+    # old_playlist_track_ids <- unique(old_playlist_track_ids)
+  }
+
   # gets updated track list from the loff_df from before
   new_playlist_track_ids <- loop_df %>% filter(venue %in% uv) %>% select(track_uri) %>% unlist()
   
@@ -142,6 +158,67 @@ my_playlists <- tinyspotifyr::get_my_playlists(limit = 50) # gets the playlist n
 new_counts <- my_playlists %>% select(name, tracks.total) %>% filter(grepl('Next30',name))
 
 # left_join(old_counts, new_counts, by = 'name', keep = TRUE)
+
+```
+
+
+```{r}
+# gets all the playlists
+my_playlists <- tinyspotifyr::get_my_playlists(limit = 50) # gets the playlist names
+
+old_counts <- my_playlists %>% select(name, tracks.total) %>% filter(grepl('Next30',name))
+
+# sets venue and date variables
+unique_venue <- unique(loop_df$venue)
+
+
+for (uv in unique_venue) {
+  
+  # defines the playlist name
+  playlist_name <- paste('Next30:',uv, sep = " ")  # the name of the venue
+  
+  # Logical to get the playlist that matches
+  playlist_logical <- (my_playlists$name == playlist_name)
+  
+  # Other variables, eventually landing on the playlist_id
+  ind <- which(playlist_logical)
+  dr <- my_playlists[ind, ]
+  playlist_id <- sub("spotify:playlist:", "", dr$uri)
+  
+    # Number of track on the playlist
+  old_playlist_tracks <- old_counts[grep(uv, old_counts$name), c("tracks.total")]
+  batch_size <- 100
+  
+  # Calculate the number of iterations needed
+  num_iterations <- ceiling(old_playlist_tracks / batch_size)
+  
+  # Initialize an empty vector to store all the playlist tracks
+  old_playlist_track_ids <- character(0)
+  
+  # Loop through the iterations
+  for (i in 1:num_iterations) {
+    songs <- get_playlist_tracks(playlist_id, offset = (i*100-100)) 
+    track_ids <- paste("spotify:track:", songs$track.id, sep="") %>%unlist()
+    
+    # Extract the track names from the current batch and add them to the 'all_tracks' vector
+    old_playlist_track_ids <- c(old_playlist_track_ids, track_ids)
+
+  }
+  
+ # removes the old songs
+  remove_tracks_from_playlist(
+    playlist_id,
+    where(count(old_playlist_track_ids$track.uri) > 1))
+  )
+  
+# Identify duplicate track URIs
+duplicate_indices <- duplicated(old_playlist_track_ids)
+
+# Remove duplicates from the old_playlist_track_ids data frame
+old_playlist_track_ids <- old_playlist_track_ids[!duplicate_indices, ]
+
+# Remove duplicate tracks from the playlist
+remove_tracks_from_playlist(playlist_id, track_uris = old_playlist_track_ids$track.uri)
 
 ```
 
